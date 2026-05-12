@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: sentiscope-api
+    env: python
+    region: singapore
+    plan: free
+    buildCommand: pip install -r requirements.txt && playwright install chromium && playwright install-deps chromium
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: GAIzaSyAm7FzycCq5YrgHRD-OclA_dcO4X0vgUV0
+        sync: false

@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SentiScope — Analisis Sentimen Shopee</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #070709;
+  --surface: #0f0f14;
+  --surface2: #17171f;
+  --surface3: #1e1e28;
+  --border: rgba(255,255,255,0.06);
+  --border2: rgba(255,255,255,0.11);
+  --text: #eeedf5;
+  --muted: #7a798f;
+  --accent: #ee5533;
+  --accent2: #ff7755;
+  --green: #22c97a;
+  --yellow: #f5c842;
+  --red: #f04444;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 300;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.4;
+}
+
+.container {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 0 24px;
+  position: relative;
+  z-index: 1;
+}
+
+header {
+  padding: 56px 0 48px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 56px;
+}
+
+.logo {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.logo-name {
+  font-family: 'Syne', sans-serif;
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  color: var(--text);
+}
+
+.logo-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-bottom: 3px;
+}
+
+.tagline {
+  font-size: 14px;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-weight: 400;
+}
+
+.input-section { margin-bottom: 56px; }
+
+.input-label {
+  font-family: 'Syne', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 12px;
+  display: block;
+}
+
+.input-row {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.url-input {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  padding: 14px 18px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 15px;
+  font-weight: 300;
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.url-input::placeholder { color: var(--muted); }
+.url-input:focus {
+  border-color: var(--accent);
+  background: var(--surface2);
+}
+
+.analyze-btn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 14px 28px;
+  font-family: 'Syne', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+  white-space: nowrap;
+}
+
+.analyze-btn:hover { background: var(--accent2); }
+.analyze-btn:active { transform: scale(0.98); }
+.analyze-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+.input-hint {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+#loading {
+  display: none;
+  padding: 64px 0;
+  text-align: center;
+}
+
+.loading-ring {
+  width: 40px;
+  height: 40px;
+  border: 2px solid var(--border2);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 20px;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.loading-text {
+  font-family: 'Syne', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.loading-steps {
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+#error-box {
+  display: none;
+  background: rgba(240, 68, 68, 0.08);
+  border: 1px solid rgba(240, 68, 68, 0.2);
+  border-radius: 10px;
+  padding: 16px 20px;
+  margin-bottom: 32px;
+  font-size: 14px;
+  color: #f07070;
+}
+
+#results { display: none; animation: fadeUp 0.5s ease; }
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.verdict-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 28px;
+  border-radius: 14px;
+  margin-bottom: 32px;
+  border: 1px solid transparent;
+}
+
+.verdict-banner.beli { background: rgba(34,201,122,0.07); border-color: rgba(34,201,122,0.2); }
+.verdict-banner.pertimbangkan { background: rgba(245,200,66,0.07); border-color: rgba(245,200,66,0.2); }
+.verdict-banner.hindari { background: rgba(240,68,68,0.07); border-color: rgba(240,68,68,0.2); }
+
+.verdict-left { flex: 1; }
+
+.verdict-label {
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.verdict-text {
+  font-family: 'Syne', sans-serif;
+  font-size: 26px;
+  font-weight: 800;
+}
+
+.verdict-banner.beli .verdict-text { color: var(--green); }
+.verdict-banner.pertimbangkan .verdict-text { color: var(--yellow); }
+.verdict-banner.hindari .verdict-text { color: var(--red); }
+
+.verdict-score-ring {
+  width: 72px;
+  height: 72px;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.verdict-score-ring svg { transform: rotate(-90deg); }
+
+.score-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.score-num {
+  font-family: 'Syne', sans-serif;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.score-label {
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.meta-strip {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 32px;
+}
+
+.meta-pill {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: 6px 14px;
+  font-size: 13px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.meta-pill span { color: var(--text); font-weight: 400; }
+
+.section { margin-bottom: 32px; }
+
+.section-title {
+  font-family: 'Syne', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.summary-box {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 12px;
+  padding: 20px 22px;
+  font-size: 15px;
+  line-height: 1.75;
+  color: var(--text);
+  font-style: italic;
+  font-weight: 300;
+}
+
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 560px) { .grid2 { grid-template-columns: 1fr; } }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 12px;
+  padding: 18px 20px;
+}
+
+.card-title {
+  font-family: 'Syne', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+}
+
+.card-title.pos { color: var(--green); }
+.card-title.neg { color: var(--red); }
+.card-title.warn { color: var(--yellow); }
+
+.point-list { list-style: none; }
+
+.point-list li {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text);
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.point-list li:last-child { border-bottom: none; }
+
+.dot-pos, .dot-neg, .dot-warn {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-top: 7px;
+  flex-shrink: 0;
+}
+.dot-pos { background: var(--green); }
+.dot-neg { background: var(--red); }
+.dot-warn { background: var(--yellow); }
+
+.theme-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.theme-tag {
+  background: var(--surface3);
+  border: 1px solid var(--border2);
+  border-radius: 100px;
+  padding: 6px 14px;
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 400;
+}
+
+.rec-box {
+  background: linear-gradient(135deg, rgba(238,85,51,0.08) 0%, rgba(238,85,51,0.03) 100%);
+  border: 1px solid rgba(238,85,51,0.2);
+  border-radius: 12px;
+  padding: 20px 22px;
+}
+
+.rec-box p {
+  font-size: 15px;
+  line-height: 1.75;
+  color: var(--text);
+  margin-bottom: 14px;
+}
+
+.rec-box p:last-child { margin-bottom: 0; }
+
+.buyer-profile {
+  background: var(--surface2);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--muted);
+  border-left: 3px solid var(--accent);
+}
+
+.buyer-profile strong { color: var(--text); font-weight: 400; }
+
+.sentiment-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.sentiment-bar-bg {
+  flex: 1;
+  height: 6px;
+  background: var(--surface3);
+  border-radius: 100px;
+  overflow: hidden;
+}
+
+.sentiment-bar-fill {
+  height: 100%;
+  border-radius: 100px;
+  transition: width 1s ease;
+}
+
+.sentiment-label {
+  font-family: 'Syne', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  min-width: 70px;
+  text-align: right;
+}
+
+footer {
+  border-top: 1px solid var(--border);
+  padding: 32px 0;
+  margin-top: 64px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.new-analysis-btn {
+  margin-top: 32px;
+  background: transparent;
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  padding: 10px 22px;
+  font-family: 'Syne', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  letter-spacing: 0.05em;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.new-analysis-btn:hover { border-color: var(--accent); color: var(--accent); }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <div class="logo">
+      <span class="logo-name">SentiScope</span>
+      <div class="logo-dot"></div>
+    </div>
+    <p class="tagline">Analisis Sentimen Produk Shopee</p>
+  </header>
+
+  <section class="input-section">
+    <label class="input-label" for="shopee-url">Link Produk</label>
+    <div class="input-row">
+      <input
+        type="url"
+        id="shopee-url"
+        class="url-input"
+        placeholder="https://shopee.co.id/..."
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <button class="analyze-btn" id="analyze-btn" onclick="startAnalysis()">
+        Analisis →
+      </button>
+    </div>
+    <p class="input-hint">Tempel link produk Shopee Indonesia. Proses memakan waktu 15–30 detik.</p>
+  </section>
+
+  <div id="error-box"></div>
+
+  <div id="loading">
+    <div class="loading-ring"></div>
+    <p class="loading-text">Menganalisis</p>
+    <p class="loading-steps" id="loading-step">Membuka halaman produk...</p>
+  </div>
+
+  <div id="results"></div>
+</div>
+
+<footer>
+  <div class="container">
+    Ditenagai Claude AI · Data diambil langsung dari Shopee
+  </div>
+</footer>
+
+<script>
+// ── Ganti dengan URL backend Render kamu setelah deploy ──
+const API_BASE = "https://sentiscope-api.onrender.com";
+
+const loadingSteps = [
+  "Membuka halaman produk...",
+  "Mengambil ulasan pembeli...",
+  "Membaca deskripsi produk...",
+  "Mengirim ke Claude AI...",
+  "Menyusun laporan sentimen...",
+];
+
+let stepIdx = 0;
+let stepInterval = null;
+
+function cycleLoadingStep() {
+  const el = document.getElementById("loading-step");
+  stepIdx = (stepIdx + 1) % loadingSteps.length;
+  el.textContent = loadingSteps[stepIdx];
+}
+
+function showLoading(show) {
+  document.getElementById("loading").style.display = show ? "block" : "none";
+  document.getElementById("analyze-btn").disabled = show;
+  if (show) {
+    stepIdx = 0;
+    document.getElementById("loading-step").textContent = loadingSteps[0];
+    stepInterval = setInterval(cycleLoadingStep, 3500);
+  } else {
+    clearInterval(stepInterval);
+  }
+}
+
+function showError(msg) {
+  const el = document.getElementById("error-box");
+  el.textContent = "⚠ " + msg;
+  el.style.display = "block";
+}
+
+function hideError() {
+  document.getElementById("error-box").style.display = "none";
+}
+
+function sentimentColor(score) {
+  if (score >= 70) return "var(--green)";
+  if (score >= 40) return "var(--yellow)";
+  return "var(--red)";
+}
+
+function verdictClass(verdict) {
+  const v = (verdict || "").toLowerCase();
+  if (v.includes("beli")) return "beli";
+  if (v.includes("pertimbangkan")) return "pertimbangkan";
+  return "hindari";
+}
+
+function renderResults(data) {
+  const score = data.sentiment_score || 0;
+  const vClass = verdictClass(data.verdict);
+  const color = sentimentColor(score);
+
+  const r = 28;
+  const circ = 2 * Math.PI * r;
+  const dash = (score / 100) * circ;
+
+  const positives = (data.positives || []).map(p =>
+    `<li><div class="dot-pos"></div><span>${p}</span></li>`
+  ).join("");
+
+  const negatives = (data.negatives || []).map(n =>
+    `<li><div class="dot-neg"></div><span>${n}</span></li>`
+  ).join("");
+
+  const redFlags = (data.red_flags || []).filter(r => r && r.trim()).map(f =>
+    `<li><div class="dot-warn"></div><span>${f}</span></li>`
+  ).join("");
+
+  const themes = (data.key_themes || []).map(t =>
+    `<span class="theme-tag">${t}</span>`
+  ).join("");
+
+  const raw = data.raw_data || {};
+
+  const metaPills = [
+    raw.price && `<div class="meta-pill">Harga <span>${raw.price}</span></div>`,
+    raw.rating && `<div class="meta-pill">Rating <span>${raw.rating}</span></div>`,
+    raw.sold && `<div class="meta-pill">Terjual <span>${raw.sold}</span></div>`,
+    raw.review_count && `<div class="meta-pill">Ulasan dibaca <span>${raw.review_count}</span></div>`,
+  ].filter(Boolean).join("");
+
+  const html = `
+    <div class="verdict-banner ${vClass}">
+      <div class="verdict-left">
+        <p class="verdict-label">Verdict</p>
+        <p class="verdict-text">${data.verdict || "—"}</p>
+        <div style="margin-top:8px;">
+          <div class="sentiment-bar-wrap">
+            <div class="sentiment-bar-bg">
+              <div class="sentiment-bar-fill" style="width:${score}%; background:${color};"></div>
+            </div>
+            <span class="sentiment-label" style="color:${color};">${data.overall_sentiment}</span>
+          </div>
+        </div>
+      </div>
+      <div class="verdict-score-ring">
+        <svg width="72" height="72" viewBox="0 0 72 72">
+          <circle cx="36" cy="36" r="${r}" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="5"/>
+          <circle cx="36" cy="36" r="${r}" fill="none" stroke="${color}" stroke-width="5"
+            stroke-dasharray="${dash.toFixed(1)} ${circ.toFixed(1)}"
+            stroke-linecap="round"/>
+        </svg>
+        <div class="score-text">
+          <span class="score-num" style="color:${color};">${score}</span>
+          <span class="score-label">/ 100</span>
+        </div>
+      </div>
+    </div>
+
+    ${metaPills ? `<div class="meta-strip">${metaPills}</div>` : ""}
+
+    <div class="section">
+      <p class="section-title">Ringkasan</p>
+      <div class="summary-box">${data.summary || "—"}</div>
+    </div>
+
+    <div class="section">
+      <p class="section-title">Poin Penilaian</p>
+      <div class="grid2">
+        <div class="card">
+          <p class="card-title pos">✓ Kelebihan</p>
+          <ul class="point-list">${positives || "<li><div class='dot-pos'></div><span>Tidak ada data</span></li>"}</ul>
+        </div>
+        <div class="card">
+          <p class="card-title neg">✗ Kekurangan</p>
+          <ul class="point-list">${negatives || "<li><div class='dot-neg'></div><span>Tidak ada data</span></li>"}</ul>
+        </div>
+      </div>
+    </div>
+
+    ${redFlags ? `
+    <div class="section">
+      <p class="section-title">Red Flags</p>
+      <div class="card">
+        <ul class="point-list">${redFlags}</ul>
+      </div>
+    </div>` : ""}
+
+    ${themes ? `
+    <div class="section">
+      <p class="section-title">Tema Utama</p>
+      <div class="theme-tags">${themes}</div>
+    </div>` : ""}
+
+    <div class="section">
+      <p class="section-title">Rekomendasi</p>
+      <div class="rec-box">
+        <p>${data.recommendation || "—"}</p>
+        ${data.buyer_profile ? `<div class="buyer-profile"><strong>Cocok untuk:</strong> ${data.buyer_profile}</div>` : ""}
+      </div>
+    </div>
+
+    <div style="text-align:center;">
+      <button class="new-analysis-btn" onclick="resetUI()">← Analisis Produk Lain</button>
+    </div>
+  `;
+
+  const resultsEl = document.getElementById("results");
+  resultsEl.innerHTML = html;
+  resultsEl.style.display = "block";
+  resultsEl.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function resetUI() {
+  document.getElementById("results").style.display = "none";
+  document.getElementById("results").innerHTML = "";
+  document.getElementById("shopee-url").value = "";
+  hideError();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+async function startAnalysis() {
+  const url = document.getElementById("shopee-url").value.trim();
+  if (!url) { showError("Masukkan link Shopee terlebih dahulu."); return; }
+  if (!url.includes("shopee")) { showError("Link harus dari Shopee (shopee.co.id atau shopee.com)."); return; }
+
+  hideError();
+  document.getElementById("results").style.display = "none";
+  showLoading(true);
+
+  try {
+    const response = await fetch(`${API_BASE}/analyze`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || "Terjadi kesalahan pada server.");
+    renderResults(data);
+  } catch (err) {
+    showError(err.message || "Tidak dapat terhubung ke server.");
+  } finally {
+    showLoading(false);
+  }
+}
+
+document.getElementById("shopee-url").addEventListener("keydown", function(e) {
+  if (e.key === "Enter") startAnalysis();
+});
+</script>
+</body>
+</html>
