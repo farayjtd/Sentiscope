@@ -5,7 +5,8 @@ import google.generativeai as genai
 import re
 import os
 import json
-from playwright.async_api import async_playwright
+import httpx
+from bs4 import BeautifulSoup
 
 app = FastAPI(title="SentiScope API")
 
@@ -19,126 +20,86 @@ app.add_middleware(
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 model = genai.GenerativeModel("gemini-1.5-flash")
 
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Referer": "https://shopee.co.id/",
+}
+
 
 class AnalyzeRequest(BaseModel):
     url: str
 
 
+def extract_shopee_ids(url: str):
+    match = re.search(r"i\.(\d+)\.(\d+)", url)
+    if match:
+        return match.group(1), match.group(2)
+    match = re.search(r"-i\.(\d+)\.(\d+)", url)
+    if match:
+        return match.group(1), match.group(2)
+    return None, None
+
+
+async def fetch_shopee_api(shop_id: str, item_id: str) -> dict:
+    """Fetch product data from Shopee's internal API."""
+    async with httpx.AsyncClient(headers=HEADERS, follow_redirects=True, timeout=20) as client:
+
+        # Product detail
+        product_url = f"https://shopee.co.id/api/v4/item/get?itemid={item_id}&shopid={shop_id}"
+        product_resp = await client.get(product_url)
+        product_data = product_resp.json()
+        item = product_data.get("data", {}) or {}
+
+        product_name = item.get("name", "Produk Shopee")
+        price_raw = item.get("price", 0)
+        price = f"Rp {int(price_raw / 100000):,}".replace(",", ".") if price_raw else ""
+        rating = str(item.get("item_rating", {}).get("rating_star", ""))
+        sold = str(item.get("historical_sold", ""))
+        description = (item.get("description", "") or "")[:1000]
+
+        # Reviews
+        reviews = []
+        review_url = (
+            f"https://shopee.co.id/api/v2/item/get_ratings"
+            f"?itemid={item_id}&shopid={shop_id}&limit=20&offset=0&type=0"
+        )
+        review_resp = await client.get(review_url)
+        review_data = review_resp.json()
+        ratings_list = review_data.get("data", {}).get("ratings", []) or []
+        for r in ratings_list:
+            comment = r.get("comment", "").strip()
+            if comment and len(comment) > 5:
+                reviews.append(comment)
+
+        return {
+            "product_name": product_name,
+            "price": price,
+            "rating": rating,
+            "sold": sold,
+            "description": description,
+            "reviews": reviews,
+        }
+
+
 async def scrape_shopee(url: str) -> dict:
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            headless=True,
-            args=[
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
-            ]
-        )
-        context = await browser.new_context(
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"
-            ),
-            locale="id-ID",
-            viewport={"width": 1280, "height": 800},
-        )
-        page = await context.new_page()
+    # Resolve short URLs
+    async with httpx.AsyncClient(headers=HEADERS, follow_redirects=True, timeout=15) as client:
+        resp = await client.get(url)
+        final_url = str(resp.url)
 
-        try:
-            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-            await page.wait_for_timeout(4000)
+    shop_id, item_id = extract_shopee_ids(final_url)
 
-            product_name = ""
-            try:
-                product_name = await page.locator("h1").first.inner_text(timeout=5000)
-            except Exception:
-                try:
-                    product_name = await page.title()
-                except Exception:
-                    product_name = "Produk Shopee"
+    if not shop_id or not item_id:
+        raise Exception("Tidak dapat membaca ID produk dari URL. Pastikan link langsung ke halaman produk Shopee.")
 
-            rating = ""
-            try:
-                rating = await page.locator(
-                    "[class*='rating'] span, [class*='score']"
-                ).first.inner_text(timeout=3000)
-            except Exception:
-                pass
-
-            sold = ""
-            try:
-                sold_el = page.locator("text=/terjual|sold/i").first
-                sold = await sold_el.inner_text(timeout=3000)
-            except Exception:
-                pass
-
-            price = ""
-            try:
-                price = await page.locator(
-                    "[class*='price']:not([class*='original'])"
-                ).first.inner_text(timeout=3000)
-            except Exception:
-                pass
-
-            description = ""
-            try:
-                await page.locator("text=/deskripsi|description/i").first.click(timeout=3000)
-                await page.wait_for_timeout(1000)
-            except Exception:
-                pass
-            try:
-                description = await page.locator(
-                    "[class*='description'], [class*='desc']"
-                ).first.inner_text(timeout=3000)
-                description = description[:1000]
-            except Exception:
-                pass
-
-            try:
-                review_section = page.locator("text=/ulasan|rating & ulasan|review/i").first
-                await review_section.scroll_into_view_if_needed(timeout=3000)
-                await page.wait_for_timeout(2000)
-            except Exception:
-                await page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.6)")
-                await page.wait_for_timeout(2000)
-
-            reviews = []
-            selectors = [
-                "[class*='review'] [class*='content']",
-                "[class*='comment'] [class*='text']",
-                "[class*='shopee-product-comment'] span",
-            ]
-            for sel in selectors:
-                els = await page.locator(sel).all()
-                for el in els[:15]:
-                    try:
-                        text = await el.inner_text(timeout=2000)
-                        text = text.strip()
-                        if len(text) > 10 and text not in reviews:
-                            reviews.append(text)
-                    except Exception:
-                        continue
-                if reviews:
-                    break
-
-            return {
-                "product_name": product_name.strip(),
-                "price": price.strip(),
-                "rating": rating.strip(),
-                "sold": sold.strip(),
-                "description": description.strip(),
-                "reviews": reviews,
-                "url": url,
-            }
-
-        finally:
-            await browser.close()
+    return await fetch_shopee_api(shop_id, item_id)
 
 
 def analyze_with_gemini(data: dict) -> dict:
-    reviews_text = "\n".join([f"- {r}" for r in data["reviews"]]) if data["reviews"] else "Tidak ada ulasan yang berhasil diambil."
+    reviews_text = "\n".join([f"- {r}" for r in data["reviews"]]) if data["reviews"] else "Tidak ada ulasan."
 
     prompt = f"""Kamu adalah analis sentimen produk e-commerce profesional. Analisis data produk Shopee berikut dan berikan laporan lengkap dalam Bahasa Indonesia.
 
@@ -198,7 +159,7 @@ async def analyze(req: AnalyzeRequest):
         }
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Gagal menganalisis dengan Gemini: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Gagal menganalisis: {str(e)}")
 
 
 @app.get("/health")
