@@ -1,5 +1,6 @@
 fastapi==0.111.0
 uvicorn[standard]==0.29.0
 playwright==1.44.0
-anthropic==0.28.0
+google-generativeai==0.7.2
 pydantic==2.7.1
+pydantic-core==2.18.2
