@@ -1,12 +1,11 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import google.generativeai as genai
+from groq import Groq
 import re
 import os
 import json
 import httpx
-from bs4 import BeautifulSoup
 
 app = FastAPI(title="SentiScope API")
 
@@ -17,8 +16,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
-model = genai.GenerativeModel("gemini-2.0-flash")
+groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -44,10 +42,8 @@ def extract_shopee_ids(url: str):
 
 
 async def fetch_shopee_api(shop_id: str, item_id: str) -> dict:
-    """Fetch product data from Shopee's internal API."""
     async with httpx.AsyncClient(headers=HEADERS, follow_redirects=True, timeout=20) as client:
 
-        # Product detail
         product_url = f"https://shopee.co.id/api/v4/item/get?itemid={item_id}&shopid={shop_id}"
         product_resp = await client.get(product_url)
         product_data = product_resp.json()
@@ -60,7 +56,6 @@ async def fetch_shopee_api(shop_id: str, item_id: str) -> dict:
         sold = str(item.get("historical_sold", ""))
         description = (item.get("description", "") or "")[:1000]
 
-        # Reviews
         reviews = []
         review_url = (
             f"https://shopee.co.id/api/v2/item/get_ratings"
@@ -85,7 +80,6 @@ async def fetch_shopee_api(shop_id: str, item_id: str) -> dict:
 
 
 async def scrape_shopee(url: str) -> dict:
-    # Resolve short URLs
     async with httpx.AsyncClient(headers=HEADERS, follow_redirects=True, timeout=15) as client:
         resp = await client.get(url)
         final_url = str(resp.url)
@@ -98,7 +92,7 @@ async def scrape_shopee(url: str) -> dict:
     return await fetch_shopee_api(shop_id, item_id)
 
 
-def analyze_with_gemini(data: dict) -> dict:
+def analyze_with_groq(data: dict) -> dict:
     reviews_text = "\n".join([f"- {r}" for r in data["reviews"]]) if data["reviews"] else "Tidak ada ulasan."
 
     prompt = f"""Kamu adalah analis sentimen produk e-commerce profesional. Analisis data produk Shopee berikut dan berikan laporan lengkap dalam Bahasa Indonesia.
@@ -130,8 +124,14 @@ Berikan analisis dalam format JSON berikut (HANYA JSON, tanpa teks lain, tanpa m
   "verdict": "BELI" | "PERTIMBANGKAN" | "HINDARI"
 }}"""
 
-    response = model.generate_content(prompt)
-    raw = response.text.strip()
+    response = groq_client.chat.completions.create(
+        model="llama-3.1-8b-instant",
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=1500,
+        temperature=0.3,
+    )
+
+    raw = response.choices[0].message.content.strip()
     raw = re.sub(r"^```json\s*", "", raw)
     raw = re.sub(r"\s*```$", "", raw)
 
@@ -150,7 +150,7 @@ async def analyze(req: AnalyzeRequest):
         raise HTTPException(status_code=500, detail=f"Gagal mengambil data dari Shopee: {str(e)}")
 
     try:
-        result = analyze_with_gemini(scraped)
+        result = analyze_with_groq(scraped)
         result["raw_data"] = {
             "rating": scraped.get("rating"),
             "sold": scraped.get("sold"),
