@@ -7,5 +7,5 @@ services:
     buildCommand: pip install -r requirements.txt && playwright install chromium && playwright install-deps chromium
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
-      - key: GAIzaSyAm7FzycCq5YrgHRD-OclA_dcO4X0vgUV0
+      - key: GEMINI_API_KEY
         sync: false
