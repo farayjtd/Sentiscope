@@ -108,35 +108,48 @@ Deskripsi: {data['description']}
 {reviews_text}
 
 === INSTRUKSI ===
-Berikan analisis dalam format JSON berikut (HANYA JSON, tanpa teks lain, tanpa markdown):
+Balas HANYA dengan JSON valid berikut, tidak ada teks lain sama sekali sebelum atau sesudah JSON:
 
 {{
   "product_name": "nama produk",
-  "overall_sentiment": "Positif" | "Negatif" | "Campuran",
-  "sentiment_score": angka 0-100,
-  "summary": "ringkasan 2-3 kalimat tentang produk dan persepsi pembeli",
-  "positives": ["poin positif 1", "poin positif 2"],
-  "negatives": ["poin negatif 1", "poin negatif 2"],
-  "key_themes": ["tema utama 1", "tema utama 2"],
-  "recommendation": "rekomendasi 2-3 kalimat: apakah produk ini worth it, untuk siapa, dan saran pembelian",
-  "buyer_profile": "profil pembeli yang cocok untuk produk ini",
-  "red_flags": ["red flag jika ada"],
-  "verdict": "BELI" | "PERTIMBANGKAN" | "HINDARI"
+  "overall_sentiment": "Positif",
+  "sentiment_score": 75,
+  "summary": "ringkasan singkat",
+  "positives": ["kelebihan 1", "kelebihan 2"],
+  "negatives": ["kekurangan 1"],
+  "key_themes": ["tema 1", "tema 2"],
+  "recommendation": "rekomendasi pembelian",
+  "buyer_profile": "profil pembeli cocok",
+  "red_flags": [],
+  "verdict": "BELI"
 }}"""
 
     response = groq_client.chat.completions.create(
-        model="llama-3.1-8b-instant",
-        messages=[{"role": "user", "content": prompt}],
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {
+                "role": "system",
+                "content": "Kamu adalah analis sentimen. Selalu balas HANYA dengan JSON valid, tanpa teks tambahan, tanpa markdown, tanpa penjelasan."
+            },
+            {"role": "user", "content": prompt}
+        ],
         max_tokens=1500,
-        temperature=0.3,
+        temperature=0.1,
     )
 
     raw = response.choices[0].message.content.strip()
+
+    # Bersihkan markdown jika ada
     raw = re.sub(r"^```json\s*", "", raw)
+    raw = re.sub(r"^```\s*", "", raw)
     raw = re.sub(r"\s*```$", "", raw)
 
-    return json.loads(raw)
+    # Ambil JSON dari dalam teks jika ada teks sebelum/sesudah
+    json_match = re.search(r"\{.*\}", raw, re.DOTALL)
+    if json_match:
+        raw = json_match.group(0)
 
+    return json.loads(raw)
 
 @app.post("/analyze")
 async def analyze(req: AnalyzeRequest):
